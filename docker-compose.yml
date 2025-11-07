@@ -1,0 +1,45 @@
+services:
+  web:
+    build: .
+    container_name: facto-en-la-nube-web
+    ports:
+      - "8080:80"  # Puerto alternativo para no interferir con otros proyectos
+    volumes:
+      - .:/var/www/html
+      - ./runtime:/var/www/html/runtime
+      - ./web/uploads:/var/www/html/web/uploads
+    environment:
+      - YII_ENV=dev
+      - YII_DEBUG=1
+      - DB_DSN=mysql:host=db;dbname=facto_en_la_nube
+      - DB_USERNAME=facto_user
+      - DB_PASSWORD=facto_password
+    networks:
+      - facto-network
+    depends_on:
+      - db
+    restart: unless-stopped
+  db:
+    image: mysql:8.0
+    container_name: facto-en-la-nube-db
+    ports:
+      - "3307:3306"  # Puerto alternativo para MySQL
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: facto_en_la_nube
+      MYSQL_USER: facto_user
+      MYSQL_PASSWORD: facto_password
+    command: ["--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - facto-network
+    restart: unless-stopped
+
+networks:
+  facto-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+

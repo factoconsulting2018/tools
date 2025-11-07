@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Dependencies
+/vendor
+/node_modules
+
+# Runtime
+/runtime/*
+!/runtime/.gitkeep
+/runtime/database.db
+
+# Uploads
+/web/uploads/*
+!/web/uploads/.gitkeep
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Yii2
+/web/assets/*
+!/web/assets/.gitkeep
+
