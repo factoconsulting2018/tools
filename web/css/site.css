@@ -839,6 +839,138 @@ body.modal-open .slide-search-overlay {
     color: var(--white);
 }
 
+.invoice-reception-container .page-title h1 {
+    font-size: 2rem;
+    color: #0f1d41;
+}
+
+.invoice-reception-container .page-title p {
+    color: #1b2b5e;
+    margin-bottom: 1.5rem;
+}
+
+.invoice-reception-container .form-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.invoice-reception-container #connection-status {
+    font-weight: 600;
+}
+
+.invoice-reception-container .modal .alert {
+    margin-top: 1rem;
+}
+
+.invoice-reception-container .table tbody td {
+    vertical-align: middle;
+}
+
+.admin-db-check {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.db-status-indicator {
+    font-weight: 600;
+}
+
+.db-btn-initial {
+    color: #1c2440;
+    border-color: rgba(28, 36, 64, 0.3);
+}
+
+.db-btn-success {
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%) !important;
+    border-color: #2E7D32 !important;
+    box-shadow: 0 4px 12px rgba(46, 125, 50, 0.35);
+}
+
+.db-btn-danger {
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #F44336 0%, #C62828 100%) !important;
+    border-color: #C62828 !important;
+    box-shadow: 0 4px 12px rgba(244, 67, 54, 0.35);
+}
+
+.account-selector {
+    margin-bottom: 1.5rem;
+}
+
+.account-selector .form-label {
+    font-weight: 600;
+    color: #0f1d41;
+}
+
+.account-selector .btn {
+    min-width: 160px;
+}
+
+.account-selector select.form-control {
+    min-height: 3rem;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+}
+
+.feedback-message {
+    font-weight: 600;
+    margin-top: 0.5rem;
+    min-height: 1.2rem;
+}
+
+.connection-spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 3px solid rgba(15, 29, 65, 0.2);
+    border-top-color: var(--primary-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.connection-spinner.hidden {
+    display: none;
+}
+
+.btn-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.5rem;
+    border-radius: 999px;
+    border: 2px solid rgba(31, 58, 123, 0.4);
+    background: transparent;
+    color: var(--primary-blue);
+    font-weight: 600;
+    transition: all 0.25s ease;
+    cursor: pointer;
+}
+
+.btn-toggle:hover {
+    border-color: rgba(31, 58, 123, 0.8);
+    background: rgba(15, 29, 65, 0.08);
+}
+
+.btn-toggle.is-active {
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--accent-purple) 100%);
+    color: var(--white);
+    border-color: transparent;
+    box-shadow: 0 8px 18px rgba(15, 29, 65, 0.25);
+}
+
+.btn-toggle.is-active:hover {
+    box-shadow: 0 10px 22px rgba(15, 29, 65, 0.35);
+}
+
+.connection-status {
+    min-height: 1.5rem;
+}
+
 .table {
     width: 100%;
     margin-top: 1rem;

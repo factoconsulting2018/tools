@@ -35,6 +35,21 @@ services:
     networks:
       - facto-network
     restart: unless-stopped
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:5.2
+    container_name: facto-en-la-nube-phpmyadmin
+    ports:
+      - "8081:80"
+    environment:
+      - PMA_HOST=db
+      - PMA_USER=facto_user
+      - PMA_PASSWORD=facto_password
+      - MYSQL_ROOT_PASSWORD=rootpassword
+    depends_on:
+      - db
+    networks:
+      - facto-network
+    restart: unless-stopped
 
 networks:
   facto-network:

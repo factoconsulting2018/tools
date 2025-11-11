@@ -3,17 +3,25 @@
 namespace app\controllers;
 
 use Yii;
-use yii\web\Controller;
-use yii\web\NotFoundHttpException;
-use yii\web\UploadedFile;
-use yii\filters\AccessControl;
 use app\models\Slide;
 use app\models\Button;
 use app\models\UsageLog;
+use app\models\MailArchive;
+use app\models\MailAccount;
+use app\models\forms\MailReceptionForm;
+use app\models\forms\MailReceptionRequestForm;
+use app\components\InvoiceMailboxService;
+use yii\filters\AccessControl;
+use yii\filters\VerbFilter;
 use yii\data\ActiveDataProvider;
 use yii\db\Expression;
 use yii\db\Query;
 use yii\helpers\Json;
+use yii\helpers\Url;
+use yii\web\Controller;
+use yii\web\NotFoundHttpException;
+use yii\web\Response;
+use yii\web\UploadedFile;
 
 class AdminController extends Controller
 {
@@ -28,9 +36,36 @@ class AdminController extends Controller
                 'rules' => [
                     [
                         'allow' => true,
-                        'actions' => ['index', 'slides', 'buttons', 'create-slide', 'update-slide', 'delete-slide', 'create-button', 'update-button', 'delete-button', 'usage-export'],
+                        'actions' => [
+                            'index',
+                            'slides',
+                            'buttons',
+                            'create-slide',
+                            'update-slide',
+                            'delete-slide',
+                            'create-button',
+                            'update-button',
+                            'delete-button',
+                            'usage-export',
+                            'receive-invoices',
+                            'mail-connection-test',
+                            'mail-process',
+                            'mail-archive-download',
+                            'mail-archive-delete',
+                            'mail-account-list',
+                            'mail-account-save',
+                            'mail-account-delete',
+                            'db-status',
+                        ],
                         'roles' => ['?'], // Allow guest access for now
                     ],
+                ],
+            ],
+            'verbs' => [
+                'class' => VerbFilter::class,
+                'actions' => [
+                    'mail-archive-delete' => ['post'],
+                    'mail-account-delete' => ['post'],
                 ],
             ],
         ];
@@ -363,6 +398,322 @@ class AdminController extends Controller
         return Yii::$app->response->sendContentAsFile($content, $filename, [
             'mimeType' => 'text/csv',
         ]);
+    }
+
+    /**
+     * Pantalla para recepcionar facturas desde correo.
+     */
+    public function actionReceiveInvoices()
+    {
+        $credentialsForm = new MailReceptionForm();
+        $requestForm = new MailReceptionRequestForm();
+
+        $mailAccounts = MailAccount::find()
+            ->orderBy(['label' => SORT_ASC, 'email' => SORT_ASC])
+            ->asArray()
+            ->all();
+
+        if ($mailAccounts) {
+            $first = $mailAccounts[0];
+            $credentialsForm->setAttributes([
+                'username' => $first['username'],
+                'email' => $first['email'],
+                'password' => $first['password'],
+                'host' => $first['host'],
+                'port' => $first['port'],
+                'encryption' => $first['encryption'],
+                'folder' => $first['folder'],
+                'validateCertificate' => (bool) $first['validate_certificate'],
+            ], false);
+        }
+
+        $archives = MailArchive::find()
+            ->orderBy(['created_at' => SORT_DESC])
+            ->limit(50)
+            ->all();
+
+        return $this->render('receive-invoices', [
+            'credentialsForm' => $credentialsForm,
+            'requestForm' => $requestForm,
+            'archives' => $archives,
+            'mailAccounts' => $mailAccounts,
+        ]);
+    }
+
+    /**
+     * Endpoint para validar credenciales de correo.
+     */
+    public function actionMailConnectionTest()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $form = new MailReceptionForm();
+        $data = Yii::$app->request->getBodyParams();
+
+        if (!$form->load($data, '') || !$form->validate()) {
+            return [
+                'success' => false,
+                'message' => 'Los datos del formulario no son válidos.',
+                'errors' => $form->getErrors(),
+            ];
+        }
+
+        try {
+            $service = new InvoiceMailboxService();
+            $service->testConnection($form);
+
+            return ['success' => true];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Procesa el buzón y genera los archivos solicitados.
+     */
+    public function actionMailProcess()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $credentialsForm = new MailReceptionForm();
+        $requestForm = new MailReceptionRequestForm();
+        $data = Yii::$app->request->getBodyParams();
+
+        $credentialsValid = $credentialsForm->load($data['credentials'] ?? [], '') && $credentialsForm->validate();
+        $requestValid = $requestForm->load($data['request'] ?? [], '') && $requestForm->validate();
+
+        if (!$credentialsValid || !$requestValid) {
+            return [
+                'success' => false,
+                'message' => 'Revisa los datos proporcionados.',
+                'errors' => array_filter([
+                    'credentials' => $credentialsForm->getErrors(),
+                    'request' => $requestForm->getErrors(),
+                ]),
+            ];
+        }
+
+        try {
+            $service = new InvoiceMailboxService();
+            $result = $service->processMailbox($credentialsForm, $requestForm);
+
+            if (!$result['archive']) {
+                return [
+                    'success' => true,
+                    'empty' => true,
+                    'summary' => $result['summary'],
+                    'warnings' => $result['warnings'],
+                ];
+            }
+
+            /** @var MailArchive $archive */
+            $archive = $result['archive'];
+
+            return [
+                'success' => true,
+                'archiveId' => $archive->id,
+                'downloadUrl' => Url::to(['admin/mail-archive-download', 'id' => $archive->id], true),
+                'summary' => $result['summary'],
+                'warnings' => $result['warnings'],
+                'archive' => [
+                    'fileName' => $archive->file_name,
+                    'fileType' => $archive->getFileTypeLabel(),
+                    'createdAt' => $archive->created_at,
+                ],
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Permite descargar un archivo generado.
+     *
+     * @param int $id
+     * @return Response
+     */
+    public function actionMailArchiveDownload($id)
+    {
+        $archive = $this->findMailArchive($id);
+        $path = $archive->getAbsolutePath();
+
+        if (!$path || !file_exists($path)) {
+            throw new NotFoundHttpException('El archivo solicitado no se encuentra disponible.');
+        }
+
+        return Yii::$app->response->sendFile($path, $archive->file_name);
+    }
+
+    /**
+     * Elimina el archivo generado.
+     *
+     * @param int $id
+     * @return Response
+     */
+    public function actionMailArchiveDelete($id)
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $archive = $this->findMailArchive($id);
+        $path = $archive->getAbsolutePath();
+
+        if ($path && file_exists($path)) {
+            @unlink($path);
+        }
+
+        $archive->status = MailArchive::STATUS_DELETED;
+        $archive->save(false, ['status', 'updated_at']);
+        $archive->delete();
+
+        return ['success' => true];
+    }
+
+    public function actionMailAccountList()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $accounts = MailAccount::find()
+            ->orderBy(['label' => SORT_ASC, 'email' => SORT_ASC])
+            ->asArray()
+            ->all();
+
+        return [
+            'success' => true,
+            'accounts' => array_map(static function (array $account) {
+                $account['validate_certificate'] = (bool) $account['validate_certificate'];
+                return $account;
+            }, $accounts),
+        ];
+    }
+
+    public function actionMailAccountSave()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        $data = Yii::$app->request->getBodyParams();
+
+        $id = $data['id'] ?? null;
+        if ($id) {
+            $model = MailAccount::findOne($id);
+            if (!$model) {
+                return ['success' => false, 'message' => 'La cuenta seleccionada no existe.'];
+            }
+        } else {
+            $model = new MailAccount();
+        }
+
+        Yii::info(['rawPayload' => $data], 'mailAccountSave');
+
+        if (isset($data['MailAccount']) && is_array($data['MailAccount'])) {
+            $data = $data['MailAccount'];
+        }
+
+        Yii::info(['normalizedPayload' => $data], 'mailAccountSave');
+
+        $model->label = trim((string)($data['label'] ?? ''));
+        $model->username = trim((string)($data['username'] ?? ''));
+        $model->email = trim((string)($data['email'] ?? ''));
+        $model->password = (string)($data['password'] ?? '');
+        $model->host = trim((string)($data['host'] ?? ''));
+        $model->port = (int)($data['port'] ?? 993);
+        $model->encryption = (string)($data['encryption'] ?? 'ssl');
+        $model->folder = trim((string)($data['folder'] ?? 'INBOX'));
+        $model->validate_certificate = !empty($data['validate_certificate']);
+
+        $now = date('Y-m-d H:i:s');
+        if ($model->isNewRecord) {
+            $model->created_at = $now;
+        }
+        $model->updated_at = $now;
+
+        try {
+            if (!$model->save(false)) {
+                return ['success' => false, 'message' => 'No fue posible guardar la cuenta.'];
+            }
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Error al guardar la cuenta: ' . $e->getMessage(),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'account' => [
+                'id' => $model->id,
+                'label' => $model->label,
+                'username' => $model->username,
+                'email' => $model->email,
+                'password' => $model->password,
+                'host' => $model->host,
+                'port' => $model->port,
+                'encryption' => $model->encryption,
+                'validate_certificate' => (bool) $model->validate_certificate,
+                'folder' => $model->folder,
+            ],
+        ];
+    }
+
+    public function actionMailAccountDelete()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        $id = Yii::$app->request->post('id');
+
+        if (!$id) {
+            return ['success' => false, 'message' => 'No se indicó la cuenta a eliminar.'];
+        }
+
+        $account = MailAccount::findOne($id);
+        if (!$account) {
+            return ['success' => false, 'message' => 'La cuenta seleccionada no existe.'];
+        }
+
+        $account->delete();
+
+        return ['success' => true];
+    }
+
+    /**
+     * Busca un archivo almacenado.
+     *
+     * @param int $id
+     * @return MailArchive
+     */
+    protected function findMailArchive($id)
+    {
+        if (($model = MailArchive::findOne($id)) !== null) {
+            return $model;
+        }
+
+        throw new NotFoundHttpException('El recurso solicitado no existe.');
+    }
+
+    public function actionDbStatus()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        try {
+            $start = microtime(true);
+            $result = Yii::$app->db->createCommand('SELECT 1')->queryScalar();
+            $duration = (int) round((microtime(true) - $start) * 1000);
+
+            return [
+                'success' => (int) $result === 1,
+                'durationMs' => $duration,
+            ];
+        } catch (\Throwable $e) {
+            Yii::error('DB status check failed: ' . $e->getMessage(), __METHOD__);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
     }
 }
 

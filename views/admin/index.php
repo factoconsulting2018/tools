@@ -144,6 +144,65 @@ $this->registerJs(
     });
 JS
 , \yii\web\View::POS_END);
+
+$dbStatusUrl = Json::htmlEncode(Url::to(['admin/db-status']));
+$csrfToken = Json::htmlEncode(Yii::$app->request->getCsrfToken());
+$dbStatusScript = <<<JS
+(function () {
+    const btn = document.getElementById('check-db-btn');
+    const indicator = document.getElementById('db-status-indicator');
+    if (!btn || !indicator) {
+        return;
+    }
+
+    function setButtonState(type) {
+        btn.classList.remove('db-btn-initial', 'db-btn-success', 'db-btn-danger');
+        if (type === 'success') {
+            btn.classList.add('db-btn-success');
+        } else if (type === 'error') {
+            btn.classList.add('db-btn-danger');
+        } else {
+            btn.classList.add('db-btn-initial');
+        }
+    }
+
+    function checkDbConnection() {
+        indicator.textContent = 'Verificando...';
+        indicator.className = 'db-status-indicator text-info';
+        fetch({$dbStatusUrl}, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': {$csrfToken}
+            },
+            body: JSON.stringify({})
+        }).then(function (response) {
+            return response.json();
+        }).then(function (data) {
+            if (data.success) {
+                const duration = data.durationMs ? data.durationMs + ' ms' : 'OK';
+                indicator.textContent = 'Conexión disponible (' + duration + ')';
+                indicator.className = 'db-status-indicator text-success';
+                setButtonState('success');
+            } else {
+                const message = data.message ? data.message : 'Error desconocido';
+                indicator.textContent = 'Sin conexión: ' + message;
+                indicator.className = 'db-status-indicator text-danger';
+                setButtonState('error');
+            }
+        }).catch(function (error) {
+            console.error('DB status error', error);
+            indicator.textContent = 'Error consultando conexión';
+            indicator.className = 'db-status-indicator text-danger';
+            setButtonState('error');
+        });
+    }
+
+    btn.addEventListener('click', checkDbConnection);
+    checkDbConnection();
+})();
+JS;
+$this->registerJs($dbStatusScript, \yii\web\View::POS_END);
 ?>
 
 <div class="admin-container">
@@ -152,12 +211,20 @@ JS
         <p>Gestiona el contenido de tu sitio web</p>
     </div>
 
+<div class="admin-db-check">
+    <button type="button" class="btn btn-outline-light db-btn-initial" id="check-db-btn">Verificar conexión BD</button>
+    <span id="db-status-indicator" class="db-status-indicator text-muted">Verificando...</span>
+    </div>
+
     <div class="admin-nav">
         <a href="<?= \yii\helpers\Url::to(['admin/slides']) ?>">
             <i class="material-icons">image</i> Gestionar Slides
         </a>
         <a href="<?= \yii\helpers\Url::to(['admin/buttons']) ?>">
             <i class="material-icons">link</i> Gestionar Botones
+        </a>
+        <a href="<?= \yii\helpers\Url::to(['admin/receive-invoices']) ?>">
+            <i class="material-icons">mail</i> Recepcionar Facturas
         </a>
     </div>
 

@@ -1,12 +1,12 @@
 # Manual de Producción – Actualización del repositorio `factoconsulting2018/tools`
 
-Este documento describe el procedimiento recomendado para actualizar el código en el servidor de producción (`/home/user-data/www/facturaenlanube.com`) utilizando los últimos cambios publicados en el repositorio remoto: <https://github.com/factoconsulting2018/tools>.
+Este documento describe el procedimiento recomendado para actualizar el código en el servidor de producción (`/home/user-data/www/factoenlanube.com`) utilizando los últimos cambios publicados en el repositorio remoto: <https://github.com/factoconsulting2018/tools>.
 
 ---
 
 ## 1. Requisitos previos
 
-1. Acceso SSH al servidor de producción (usuario con permisos para leer y escribir en `/home/user-data/www/facturaenlanube.com`).
+1. Acceso SSH al servidor de producción (usuario con permisos para leer y escribir en `/home/user-data/www/factoenlanube.com`).
 2. Claves SSH autorizadas o credenciales válidas.
 3. `git`, `composer` y (si aplica) `docker` instalados en el servidor.
 4. Conexión estable a internet para descargar dependencias y cambios del repositorio remoto.
@@ -20,7 +20,7 @@ Este documento describe el procedimiento recomendado para actualizar el código 
 ssh usuario@tu-servidor.com
 
 # 2. Cambiar al directorio del proyecto
-cd /home/user-data/www/facturaenlanube.com
+cd /home/user-data/www/factoenlanube.com
 
 # 3. Verificar el estado del repositorio antes de actualizar
 git status
