@@ -82,6 +82,19 @@ $this->registerJs('window.appConfig = ' . Json::encode($config) . ';', View::POS
                                 <span id="mass-query-status-text"></span>
                             </span>
                         </div>
+                        <div class="mass-query__results hidden" id="mass-query-results">
+                            <table class="mass-results-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Identificación</th>
+                                        <th>Estado</th>
+                                        <th>Detalle</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mass-query-results-body"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>

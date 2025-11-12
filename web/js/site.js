@@ -35,6 +35,8 @@ let massPrevBtn;
 let massNextBtn;
 let massIndicator;
 let massExportBtn;
+let massResultsContainer;
+let massResultsBody;
 const appConfig = window.appConfig || {};
 const LOG_USAGE_URL = appConfig.logUsageUrl || null;
 const CSRF_TOKEN = appConfig.csrfToken || (window.yii && typeof yii.getCsrfToken === 'function' ? yii.getCsrfToken() : null);
@@ -43,6 +45,7 @@ let defaultTypeValue = 'fisica';
 let massResults = [];
 let currentMassIndex = -1;
 let currentResultSource = 'none';
+const MASS_QUERY_DELAY_MS = 1200;
 
 const BCCR_ENDPOINT = 'https://gee.bccr.fi.cr/Indicadores/Suscripciones/WS/wsindicadoreseconomicos.asmx/ObtenerIndicadoresEconomicos';
 const BCCR_EMAIL = appConfig.bccrEmail || '';
@@ -68,6 +71,12 @@ function logUsage(entries) {
         body: JSON.stringify({ entries })
     }).catch(function () {
         // ignore logging failures
+    });
+}
+
+function delay(ms) {
+    return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
     });
 }
 
@@ -761,7 +770,6 @@ async function loadXmlInvoices(files) {
     let success = 0;
     let failures = 0;
     const usageEntries = [];
-    const usageEntries = [];
 
     for (let i = 0; i < listado.length; i += 1) {
         const file = listado[i];
@@ -1125,6 +1133,44 @@ function clearMassState() {
     }
 }
 
+function resetMassSummary() {
+    if (massResultsBody) {
+        massResultsBody.innerHTML = '';
+    }
+    if (massResultsContainer) {
+        massResultsContainer.classList.add('hidden');
+    }
+}
+
+function appendMassSummaryRow(result, index) {
+    if (!massResultsBody) {
+        return;
+    }
+
+    const row = document.createElement('tr');
+    row.dataset.index = String(index);
+    row.className = result && result.success ? 'is-success' : 'is-error';
+
+    const statusText = result && result.success ? 'Éxito' : 'Error';
+    const detailText = result && result.success && result.data && result.data.nombre
+        ? result.data.nombre
+        : result && result.error
+            ? result.error
+            : '';
+
+    row.innerHTML = '' +
+        '<td>' + (index + 1) + '</td>' +
+        '<td>' + escapeHtml(result.identificacion || '') + '</td>' +
+        '<td><span class="status-pill">' + statusText + '</span></td>' +
+        '<td>' + escapeHtml(detailText || '') + '</td>';
+
+    massResultsBody.appendChild(row);
+
+    if (massResultsContainer) {
+        massResultsContainer.classList.remove('hidden');
+    }
+}
+
 function updateMassControls() {
     const total = massResults.length;
     if (massIndicator) {
@@ -1251,9 +1297,11 @@ async function runMassQuery(identificadores) {
     if (massExportBtn) {
         massExportBtn.disabled = true;
     }
+    resetMassSummary();
 
     let success = 0;
     let failures = 0;
+    const usageEntries = [];
 
     for (let i = 0; i < identificadores.length; i += 1) {
         const ident = identificadores[i];
@@ -1305,6 +1353,13 @@ async function runMassQuery(identificadores) {
             });
             failures += 1;
             usageEntries.push({ type: 'hacienda_error', identifier: ident });
+        }
+
+        appendMassSummaryRow(massResults[massResults.length - 1], massResults.length - 1);
+
+        if (i < identificadores.length - 1 && MASS_QUERY_DELAY_MS > 0) {
+            // eslint-disable-next-line no-await-in-loop
+            await delay(MASS_QUERY_DELAY_MS);
         }
     }
 
@@ -1369,6 +1424,9 @@ document.addEventListener('DOMContentLoaded', function() {
     massNextBtn = document.getElementById('mass-next');
     massIndicator = document.getElementById('mass-indicator');
     massExportBtn = document.getElementById('mass-export');
+    massResultsContainer = document.getElementById('mass-query-results');
+    massResultsBody = document.getElementById('mass-query-results-body');
+    resetMassSummary();
 
     defaultTypeValue = typeSelect ? typeSelect.value : 'fisica';
     massResults = [];
@@ -1548,6 +1606,19 @@ document.addEventListener('DOMContentLoaded', function() {
         massNextBtn.addEventListener('click', function () {
             if (currentMassIndex < massResults.length - 1) {
                 displayMassResult(currentMassIndex + 1);
+            }
+        });
+    }
+
+    if (massResultsBody) {
+        massResultsBody.addEventListener('click', function (event) {
+            const row = event.target.closest('tr[data-index]');
+            if (!row) {
+                return;
+            }
+            const index = Number(row.dataset.index);
+            if (!Number.isNaN(index)) {
+                displayMassResult(index);
             }
         });
     }
