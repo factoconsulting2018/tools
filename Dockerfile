@@ -36,10 +36,13 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html \
     && mkdir -p /var/www/html/runtime \
     && mkdir -p /var/www/html/web/uploads \
+    && mkdir -p /var/www/html/web/assets \
     && chown -R www-data:www-data /var/www/html/runtime \
     && chown -R www-data:www-data /var/www/html/web/uploads \
+    && chown -R www-data:www-data /var/www/html/web/assets \
     && chmod -R 777 /var/www/html/runtime \
-    && chmod -R 777 /var/www/html/web/uploads
+    && chmod -R 777 /var/www/html/web/uploads \
+    && chmod -R 777 /var/www/html/web/assets
 
 # Configurar Apache
 RUN echo '<VirtualHost *:80>\n\

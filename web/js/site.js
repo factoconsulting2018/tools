@@ -761,6 +761,7 @@ async function loadXmlInvoices(files) {
     let success = 0;
     let failures = 0;
     const usageEntries = [];
+    const usageEntries = [];
 
     for (let i = 0; i < listado.length; i += 1) {
         const file = listado[i];

@@ -8,9 +8,9 @@ services:
     environment:
       YII_ENV: prod
       YII_DEBUG: "0"
-      DB_DSN: mysql:host=db;dbname=facto_en_la_nube
-      DB_USERNAME: facto_user
-      DB_PASSWORD: facto_password
+      DB_DSN: mysql:host=db;dbname=tools
+      DB_USERNAME: factoteam
+      DB_PASSWORD: Ardillita60+
     ports:
       - "127.0.0.1:9000:80"
     depends_on:
@@ -27,9 +27,9 @@ services:
     container_name: facto-en-la-nube-db-prod
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: facto_en_la_nube
-      MYSQL_USER: facto_user
-      MYSQL_PASSWORD: facto_password
+      MYSQL_DATABASE: tools
+      MYSQL_USER: factoteam
+      MYSQL_PASSWORD: Ardillita60+
     command:
       [
         "--default-authentication-plugin=mysql_native_password",
