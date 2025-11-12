@@ -1,0 +1,184 @@
+# Instalación en Ubuntu 22.04 para netsconsulting.com
+
+> Estos pasos asumen un servidor limpio Ubuntu 22.04 LTS con privilegios sudo.
+
+## 1. Actualizar el sistema y utilidades básicas
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y ca-certificates curl gnupg lsb-release software-properties-common unzip
+```
+
+## 2. Instalar Docker Engine y plugin Compose
+
+```bash
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+## 3. Instalar Git y clonar el proyecto
+
+```bash
+sudo apt install -y git
+git clone https://github.com/factoconsulting2018/tools.git /var/www/tools
+cd /var/www/tools
+```
+
+## 4. Configurar variables y directorios
+
+- Ajusta permisos de escritura para `runtime` y `web/uploads` si fuera necesario:
+
+```bash
+sudo mkdir -p runtime web/uploads
+sudo chown -R $USER:$USER runtime web/uploads
+```
+
+- Si se requiere personalizar credenciales de base de datos o variables de Yii, edita `docker-compose.prod.yml` antes de levantar los servicios.
+
+## 5. Construir y levantar el stack Docker
+
+```bash
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+## 6. Ejecutar migraciones y tareas iniciales
+
+```bash
+docker compose -f docker-compose.prod.yml exec web php yii migrate --interactive=0
+# Si se necesita cargar datos semilla, agregarlos aquí
+```
+
+## 7. Configurar Nginx como reverse proxy
+
+1. Instalar Nginx y Certbot:
+
+```bash
+sudo apt install -y nginx python3-certbot-nginx
+```
+
+2. Crear bloque de servidor por defecto para `netsconsulting.com` (ajusta rutas según necesidad):
+
+```bash
+sudo tee /etc/nginx/sites-available/netsconsulting.com <<'EOF'
+server {
+    listen 80;
+    server_name netsconsulting.com www.netsconsulting.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:9000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+```
+
+### Contenido de los archivos habilitados
+
+`/etc/nginx/sites-available/netsconsulting.com` debe quedar como:
+
+```nginx
+server {
+    listen 80;
+    server_name netsconsulting.com www.netsconsulting.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:9000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # La redirección HTTP→HTTPS se agregará automáticamente cuando certbot configure SSL.
+}
+```
+
+`/etc/nginx/sites-available/tools.netsconsulting.com` debe contener:
+
+```nginx
+server {
+    listen 80;
+    server_name tools.netsconsulting.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:9000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # La redirección HTTP→HTTPS se agregará automáticamente cuando certbot configure SSL.
+}
+```
+
+3. Crear bloque para `tools.netsconsulting.com`:
+
+```bash
+sudo tee /etc/nginx/sites-available/tools.netsconsulting.com <<'EOF'
+server {
+    listen 80;
+    server_name tools.netsconsulting.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:9000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+```
+
+4. Habilitar sitios y probar la configuración:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/netsconsulting.com /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/tools.netsconsulting.com /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+> Nota: después de ejecutar Certbot, Nginx añadirá bloques `server` en el puerto 443 dentro de los mismos archivos, incluyendo las directivas `ssl_certificate` y `ssl_certificate_key`. Verifícalo con `sudo cat /etc/nginx/sites-available/netsconsulting.com`.
+
+## 8. Emitir certificados Let's Encrypt
+
+```bash
+sudo certbot --nginx -d netsconsulting.com -d www.netsconsulting.com
+sudo certbot --nginx -d tools.netsconsulting.com
+sudo systemctl reload nginx
+```
+
+Certbot programará la renovación automática (`/etc/cron.d/certbot`). Verifica con:
+
+```bash
+sudo certbot renew --dry-run
+```
+
+## 9. Verificaciones finales
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs -f web
+curl -I https://netsconsulting.com
+curl -I https://tools.netsconsulting.com
+```
+
+## 10. Mantenimiento recomendado
+
+- Respaldar la base de datos periódicamente (`docker compose exec db mysqldump ...`).
+- Actualizar imágenes y dependencias cuando haya releases (`docker compose pull && docker compose up -d`).
+- Monitorear logs de Nginx y la aplicación.
+

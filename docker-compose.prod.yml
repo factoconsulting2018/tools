@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  web:
+    build:
+      context: .
+    container_name: facto-en-la-nube-web-prod
+    environment:
+      YII_ENV: prod
+      YII_DEBUG: "0"
+      DB_DSN: mysql:host=db;dbname=facto_en_la_nube
+      DB_USERNAME: facto_user
+      DB_PASSWORD: facto_password
+    ports:
+      - "127.0.0.1:9000:80"
+    depends_on:
+      - db
+    networks:
+      - facto-prod-network
+    volumes:
+      - web_runtime:/var/www/html/runtime
+      - web_uploads:/var/www/html/web/uploads
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: facto-en-la-nube-db-prod
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: facto_en_la_nube
+      MYSQL_USER: facto_user
+      MYSQL_PASSWORD: facto_password
+    command:
+      [
+        "--default-authentication-plugin=mysql_native_password",
+        "--character-set-server=utf8mb4",
+        "--collation-server=utf8mb4_unicode_ci"
+      ]
+    volumes:
+      - mysql_prod_data:/var/lib/mysql
+    networks:
+      - facto-prod-network
+    restart: unless-stopped
+
+networks:
+  facto-prod-network:
+    driver: bridge
+
+volumes:
+  mysql_prod_data:
+  web_runtime:
+  web_uploads:
+
