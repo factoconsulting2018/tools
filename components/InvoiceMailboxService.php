@@ -18,6 +18,11 @@ class InvoiceMailboxService extends Component
     public $storageAlias = '@runtime/invoice-archives';
 
     /**
+     * Alias del directorio donde se registrarán los intentos de conexión.
+     */
+    public $connectionLogAlias = '@app/receive-invoices-test';
+
+    /**
      * Verifica la conexión IMAP utilizando las credenciales proporcionadas.
      *
      * @throws RuntimeException
@@ -27,14 +32,31 @@ class InvoiceMailboxService extends Component
         $this->ensureImapAvailable();
 
         $mailbox = $credentials->getImapMailboxString();
+
+        $this->logConnectionAttempt('testConnection.start', [
+            'mailbox' => $mailbox,
+            'credentials' => $this->scrubCredentials($credentials),
+        ]);
+
         $resource = @imap_open($mailbox, $credentials->getLoginIdentifier(), $credentials->password, OP_HALFOPEN);
 
         if ($resource === false) {
             $error = imap_last_error() ?: 'No fue posible conectarse al buzón.';
+            $this->logConnectionAttempt('testConnection.error', [
+                'mailbox' => $mailbox,
+                'credentials' => $this->scrubCredentials($credentials),
+                'error' => $error,
+                'imapErrors' => imap_errors() ?: [],
+            ]);
             throw new RuntimeException($error);
         }
 
         imap_close($resource);
+
+        $this->logConnectionAttempt('testConnection.success', [
+            'mailbox' => $mailbox,
+            'credentials' => $this->scrubCredentials($credentials),
+        ]);
     }
 
     /**
@@ -50,10 +72,24 @@ class InvoiceMailboxService extends Component
         $this->ensureStorageDirectory();
 
         $mailbox = $credentials->getImapMailboxString();
+        $this->logConnectionAttempt('processMailbox.start', [
+            'mailbox' => $mailbox,
+            'credentials' => $this->scrubCredentials($credentials),
+            'range' => [
+                'start' => $request->startDate,
+                'end' => $request->endDate,
+            ],
+        ]);
         $imap = @imap_open($mailbox, $credentials->getLoginIdentifier(), $credentials->password);
 
         if ($imap === false) {
             $error = imap_last_error() ?: 'No fue posible conectarse al buzón.';
+            $this->logConnectionAttempt('processMailbox.error', [
+                'mailbox' => $mailbox,
+                'credentials' => $this->scrubCredentials($credentials),
+                'error' => $error,
+                'imapErrors' => imap_errors() ?: [],
+            ]);
             throw new RuntimeException($error);
         }
 
@@ -64,7 +100,7 @@ class InvoiceMailboxService extends Component
             $totalMessages = is_array($messageUids) ? count($messageUids) : 0;
 
             if (empty($messageUids)) {
-                return [
+                $result = [
                     'archive' => null,
                     'summary' => [
                         'totalMessages' => 0,
@@ -73,6 +109,15 @@ class InvoiceMailboxService extends Component
                     ],
                     'warnings' => ['No se encontraron correos en el periodo solicitado.'],
                 ];
+                $this->logConnectionAttempt('processMailbox.emptyMessages', [
+                    'mailbox' => $mailbox,
+                    'credentials' => $this->scrubCredentials($credentials),
+                    'range' => [
+                        'start' => $request->startDate,
+                        'end' => $request->endDate,
+                    ],
+                ]);
+                return $result;
             }
 
             $invoiceEntries = [];
@@ -107,7 +152,7 @@ class InvoiceMailboxService extends Component
             }
 
             if (empty($invoiceEntries)) {
-                return [
+                $result = [
                     'archive' => null,
                     'summary' => [
                         'totalMessages' => $totalMessages,
@@ -116,11 +161,21 @@ class InvoiceMailboxService extends Component
                     ],
                     'warnings' => ['No se encontraron facturas electrónicas 4.4 en el periodo indicado.'],
                 ];
+                $this->logConnectionAttempt('processMailbox.emptyInvoices', [
+                    'mailbox' => $mailbox,
+                    'credentials' => $this->scrubCredentials($credentials),
+                    'range' => [
+                        'start' => $request->startDate,
+                        'end' => $request->endDate,
+                    ],
+                    'totalMessages' => $totalMessages,
+                ]);
+                return $result;
             }
 
             $archive = $this->createArchive($credentials, $request, $invoiceEntries, $invoiceAttachments, $totalMessages);
 
-            return [
+            $result = [
                 'archive' => $archive,
                 'summary' => [
                     'totalMessages' => $totalMessages,
@@ -129,6 +184,16 @@ class InvoiceMailboxService extends Component
                 ],
                 'warnings' => $warnings,
             ];
+            $this->logConnectionAttempt('processMailbox.success', [
+                'mailbox' => $mailbox,
+                'credentials' => $this->scrubCredentials($credentials),
+                'range' => [
+                    'start' => $request->startDate,
+                    'end' => $request->endDate,
+                ],
+                'summary' => $result['summary'],
+            ]);
+            return $result;
         } finally {
             imap_close($imap);
         }
@@ -434,6 +499,57 @@ class InvoiceMailboxService extends Component
         }
 
         return $absolutePath;
+    }
+
+    /**
+     * Genera una representación segura de las credenciales para fines de registro.
+     */
+    protected function scrubCredentials(MailReceptionForm $credentials): array
+    {
+        return [
+            'email' => $credentials->email,
+            'username' => $credentials->getLoginIdentifier(),
+            'host' => $credentials->host,
+            'port' => $credentials->port,
+            'encryption' => $credentials->encryption,
+            'folder' => $credentials->folder,
+            'validateCertificate' => (bool)$credentials->validateCertificate,
+        ];
+    }
+
+    /**
+     * Registra eventos de conexión en un archivo específico.
+     */
+    protected function logConnectionAttempt(string $event, array $payload): void
+    {
+        try {
+            $file = $this->getConnectionLogFile();
+            $record = [
+                'timestamp' => date('c'),
+                'event' => $event,
+                'payload' => $payload,
+            ];
+            $line = json_encode($record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($line === false) {
+                $line = sprintf('{"timestamp":"%s","event":"%s","payload":"[no serializable]"}', date('c'), $event);
+            }
+            file_put_contents($file, $line . PHP_EOL, FILE_APPEND | LOCK_EX);
+        } catch (\Throwable $e) {
+            // Silenciosamente ignorar errores de logging para no interferir con el flujo principal.
+        }
+    }
+
+    /**
+     * Devuelve la ruta absoluta del archivo de log, asegurando su directorio.
+     */
+    protected function getConnectionLogFile(): string
+    {
+        $directory = \Yii::getAlias($this->connectionLogAlias);
+        if (!is_dir($directory)) {
+            FileHelper::createDirectory($directory, 0775, true);
+        }
+
+        return $directory . DIRECTORY_SEPARATOR . 'connection.log';
     }
 }
 
